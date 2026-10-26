@@ -410,8 +410,13 @@ class BoardPainter extends CustomPainter {
       );
       for (var i = 0; i < 4; i++) {
         final p = tokenGridPos(c, i, -1);
-        paint.color = kColors[c].withAlpha(80);
-        canvas.drawCircle(Offset(p.dx * u, p.dy * u), u * 0.62, paint);
+        paint.color = kColors[c];
+        canvas.drawCircle(Offset(p.dx * u, p.dy * u), u * 0.82, paint);
+        final ring = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = u * 0.1
+          ..color = kDeep[c];
+        canvas.drawCircle(Offset(p.dx * u, p.dy * u), u * 0.82, ring);
       }
     }
 
@@ -440,6 +445,22 @@ class BoardPainter extends CustomPainter {
         final p = rotCw(Offset(1.5 + k, 7.5), c);
         cell((p.dy - 0.5).round(), (p.dx - 0.5).round(), kColors[c]);
       }
+    }
+
+    // Entry arrows pointing into each home lane
+    for (var c = 0; c < 4; c++) {
+      final ctr = rotCw(const Offset(0.5, 7.5), c);
+      canvas.save();
+      canvas.translate(ctr.dx * u, ctr.dy * u);
+      canvas.rotate(c * pi / 2);
+      final arrow = Path()
+        ..moveTo(-u * 0.25, -u * 0.27)
+        ..lineTo(u * 0.28, 0)
+        ..lineTo(-u * 0.25, u * 0.27)
+        ..close();
+      paint.color = kColors[c];
+      canvas.drawPath(arrow, paint);
+      canvas.restore();
     }
 
     // Centre triangles
@@ -512,29 +533,115 @@ class TokenView extends StatelessWidget {
                 ],
               ),
             ),
-          Container(
-            width: d,
-            height: d,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color,
-              border: Border.all(color: Colors.white, width: max(1.5, d * 0.09)),
-              boxShadow: const [
-                BoxShadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1.5)),
-              ],
-            ),
-            child: Center(
-              child: Container(
-                width: d * 0.3,
-                height: d * 0.3,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: deep),
-              ),
-            ),
-          ),
+          CustomPaint(size: Size(d, d), painter: PawnPainter(color, deep)),
         ],
       ),
     );
   }
+}
+
+class PawnPainter extends CustomPainter {
+  final Color color;
+  final Color deep;
+  const PawnPainter(this.color, this.deep);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final d = size.width;
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(d * 0.5, d * 0.9), width: d * 0.8, height: d * 0.2),
+      Paint()..color = Colors.black38,
+    );
+    final body = Path()
+      ..moveTo(d * 0.16, d * 0.88)
+      ..quadraticBezierTo(d * 0.5, d * 0.97, d * 0.84, d * 0.88)
+      ..quadraticBezierTo(d * 0.64, d * 0.62, d * 0.58, d * 0.5)
+      ..lineTo(d * 0.42, d * 0.5)
+      ..quadraticBezierTo(d * 0.36, d * 0.62, d * 0.16, d * 0.88)
+      ..close();
+    final outline = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = max(1.5, d * 0.11)
+      ..strokeJoin = StrokeJoin.round
+      ..color = Colors.white;
+    canvas.drawPath(body, outline);
+    canvas.drawPath(body, Paint()..color = color);
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(d * 0.5, d * 0.86), width: d * 0.7, height: d * 0.14),
+      Paint()..color = deep,
+    );
+    final head = Offset(d * 0.5, d * 0.3);
+    final r = d * 0.25;
+    canvas.drawCircle(head, r, outline);
+    final rect = Rect.fromCircle(center: head, radius: r);
+    canvas.drawCircle(
+      head,
+      r,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.4, -0.45),
+          colors: [Color.lerp(color, Colors.white, 0.6)!, color],
+        ).createShader(rect),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant PawnPainter old) => old.color != color || old.deep != deep;
+}
+
+/// Blue background with a soft diamond pattern.
+class PatternBackground extends StatelessWidget {
+  final Widget child;
+  const PatternBackground({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.expand(
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1E4FB0), Color(0xFF0B1F5C)],
+          ),
+        ),
+        child: CustomPaint(painter: const PatternPainter(), child: child),
+      ),
+    );
+  }
+}
+
+class PatternPainter extends CustomPainter {
+  const PatternPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const step = 64.0;
+    final light = Paint()..color = const Color(0x1AFFFFFF);
+    final faint = Paint()..color = const Color(0x0DFFFFFF);
+    final rows = (size.height / (step / 2)).ceil() + 2;
+    final cols = (size.width / step).ceil() + 2;
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        final cx = c * step + (r.isOdd ? step / 2 : 0.0);
+        final cy = r * step / 2;
+        canvas.save();
+        canvas.translate(cx, cy);
+        canvas.rotate(pi / 4);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset.zero, width: 30, height: 30),
+            const Radius.circular(5),
+          ),
+          (r + c).isEven ? light : faint,
+        );
+        canvas.restore();
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class DicePainter extends CustomPainter {
@@ -924,16 +1031,7 @@ class _StartScreenState extends State<StartScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF2B1B6B), Color(0xFF0E0A2A)],
-          ),
-        ),
+      body: PatternBackground(
         child: SafeArea(
           child: Column(
             children: [
@@ -1146,94 +1244,112 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _chip(int p) {
-    final isCur = game.engine.current == p && game.phase != Phase.over;
-    final home = game.viewRel[p].where((r) => r == kFinished).length;
-    final textColor = isCur ? (p == 2 ? Colors.black : Colors.white) : Colors.white70;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 3),
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      decoration: BoxDecoration(
-        color: isCur ? kColors[p] : kColors[p].withAlpha(60),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isCur ? Colors.white : Colors.transparent, width: 2),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            kNames[p],
-            style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 13),
-          ),
-          Text('$home/4 home', style: TextStyle(color: textColor, fontSize: 11)),
-        ],
-      ),
-    );
-  }
+  Widget _panel(int c) {
+    if (!game.players.contains(c)) return const SizedBox.shrink();
+    final isCur = game.engine.current == c && game.phase != Phase.over;
+    final canRoll = isCur && game.phase == Phase.roll;
+    final home = game.viewRel[c].where((r) => r == kFinished).length;
+    final glow = canRoll ? 0.4 + 0.6 * pulse.value : 0.0;
 
-  Widget _dice(int c) {
-    final active = game.phase == Phase.roll;
-    final glow = active ? 0.4 + 0.6 * pulse.value : 0.0;
-    return GestureDetector(
-      onTap: () => game.roll(),
-      child: Container(
-        width: 78,
-        height: 78,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: kColors[c], width: 4),
-          boxShadow: [
-            BoxShadow(
-              color: kColors[c].withAlpha((glow * 200).round()),
-              blurRadius: 6 + 14 * glow,
-              spreadRadius: 1 + 3 * glow,
-            ),
-          ],
+    Widget face;
+    if (canRoll) {
+      face = Center(
+        child: Text(
+          'TAP',
+          style: TextStyle(fontWeight: FontWeight.w900, color: kDeep[c], fontSize: 14),
         ),
-        child: game.face == 0
-            ? Center(
-                child: Text(
-                  'ROLL',
-                  style: TextStyle(fontWeight: FontWeight.w900, color: kDeep[c], fontSize: 16),
-                ),
-              )
-            : SizedBox.expand(child: CustomPaint(painter: DicePainter(game.face, kDeep[c]))),
-      ),
-    );
-  }
+      );
+    } else if (isCur && game.face > 0) {
+      face = CustomPaint(painter: DicePainter(game.face, kDeep[c]));
+    } else {
+      face = const SizedBox.shrink();
+    }
 
-  Widget _bottomPanel() {
-    final c = game.engine.current;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F2A6B).withAlpha(isCur ? 255 : 150),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: kColors[c], width: isCur ? 3 : 1.5),
+      ),
+      child: Row(
         children: [
-          Row(
-            children: [
-              for (final p in game.players) Expanded(child: _chip(p)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _dice(c),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  game.status,
+          TokenView(color: kColors[c], deep: kDeep[c], d: 26, glow: false, pulse: 0),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  kNames[c],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
                   ),
                 ),
+                Text('$home/4 home', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: canRoll ? game.roll : null,
+            child: Container(
+              width: 48,
+              height: 48,
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: isCur ? Colors.white : Colors.white24,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: kColors[c], width: 2.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: kColors[c].withAlpha((glow * 220).round()),
+                    blurRadius: 4 + 12 * glow,
+                    spreadRadius: 3 * glow,
+                  ),
+                ],
               ),
-            ],
+              child: face,
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _panelRow(int a, int b) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: SizedBox(
+        height: 62,
+        child: Row(
+          children: [
+            Expanded(child: _panel(a)),
+            const SizedBox(width: 10),
+            Expanded(child: _panel(b)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusBar() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.black38,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        game.status,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -1301,33 +1417,36 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF14142B),
-      body: SafeArea(
-        child: AnimatedBuilder(
-          animation: Listenable.merge([game, ControllerLink.I, pulse]),
-          builder: (context, _) {
-            return Stack(
-              children: [
-                Column(
-                  children: [
-                    _topBar(),
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, cons) {
-                          final s = min(cons.maxWidth - 12, cons.maxHeight - 4);
-                          return Center(
-                            child: SizedBox(width: s, height: s, child: _board(s)),
-                          );
-                        },
+      body: PatternBackground(
+        child: SafeArea(
+          child: AnimatedBuilder(
+            animation: Listenable.merge([game, ControllerLink.I, pulse]),
+            builder: (context, _) {
+              return Stack(
+                children: [
+                  Column(
+                    children: [
+                      _topBar(),
+                      _panelRow(0, 1),
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, cons) {
+                            final s = min(cons.maxWidth - 12, cons.maxHeight - 4);
+                            return Center(
+                              child: SizedBox(width: s, height: s, child: _board(s)),
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                    _bottomPanel(),
-                  ],
-                ),
-                if (game.phase == Phase.over) _resultOverlay(),
-              ],
-            );
-          },
+                      _panelRow(3, 2),
+                      _statusBar(),
+                    ],
+                  ),
+                  if (game.phase == Phase.over) _resultOverlay(),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
